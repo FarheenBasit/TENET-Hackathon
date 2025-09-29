@@ -1,0 +1,129 @@
+// Blynkkkk 
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h>
+#include <SPI.h>
+#include <MFRC522.h>
+
+// WIFI
+char auth[] = "YourAuthToken";   
+char ssid[] = "YourWiFiSSID";
+char pass[] = "YourWiFiPassword";
+
+// RFID
+#define SS_PIN  5
+#define RST_PIN 22
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+byte authorizedUID[4] = {0xDE, 0xAD, 0xBE, 0xEF}; 
+
+// ULTRASONIC SENSOR
+#define TRIG_A 12
+#define ECHO_A 14
+#define TRIG_B 27
+#define ECHO_B 26
+
+// Traffic lights
+#define RED_A   18
+#define GREEN_A 19
+#define RED_B   21
+#define GREEN_B 23
+
+//Vibration Sensor
+#define VIBRATION_PIN 34
+
+// functions
+long getDistance(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW); delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH); delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  long duration = pulseIn(echoPin, HIGH, 30000);
+  return duration * 0.034 / 2;
+}
+
+bool checkRFID() {
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial())
+    return false;
+
+  bool match = true;
+  for (byte i = 0; i < 4; i++) {
+    if (rfid.uid.uidByte[i] != authorizedUID[i]) {
+      match = false; break;
+    }
+  }
+  rfid.PICC_HaltA();
+  return match;
+}
+
+void setTrafficLight(bool laneA_green) {
+  if (laneA_green) {
+    digitalWrite(GREEN_A, HIGH); digitalWrite(RED_A, LOW);
+    digitalWrite(GREEN_B, LOW);  digitalWrite(RED_B, HIGH);
+  } else {
+    digitalWrite(GREEN_A, LOW);  digitalWrite(RED_A, HIGH);
+    digitalWrite(GREEN_B, HIGH); digitalWrite(RED_B, LOW);
+  }
+}
+
+
+void setup() {
+  Serial.begin(115200);
+  SPI.begin();
+  rfid.PCD_Init();
+
+  pinMode(TRIG_A, OUTPUT); pinMode(ECHO_A, INPUT);
+  pinMode(TRIG_B, OUTPUT); pinMode(ECHO_B, INPUT);
+
+  pinMode(RED_A, OUTPUT); pinMode(GREEN_A, OUTPUT);
+  pinMode(RED_B, OUTPUT); pinMode(GREEN_B, OUTPUT);
+
+  pinMode(VIBRATION_PIN, INPUT);
+
+  Blynk.begin(auth, ssid, pass);
+  Serial.println("System with Blynk Initialized ✅");
+}
+
+void loop() {
+  Blynk.run();
+
+  // 1. RFID Restricted Zone
+  if (checkRFID()) {
+    Serial.println("✅ Authorized Vehicle Entered Zone");
+    Blynk.notify("✅ Authorized Vehicle Entered Zone");
+    Blynk.virtualWrite(V1, "Authorized Vehicle"); // Label widget
+  } else {
+    Serial.println("❌ Unauthorized Vehicle Detected!");
+    Blynk.virtualWrite(V1, "Unauthorized Vehicle");
+  }
+
+  // Lane Occupancy
+  long distA = getDistance(TRIG_A, ECHO_A);
+  long distB = getDistance(TRIG_B, ECHO_B);
+
+  int countA = (distA < 20) ? 1 : 0;
+  int countB = (distB < 20) ? 1 : 0;
+
+  Serial.printf("Lane A: %d | Lane B: %d\n", countA, countB);
+  Blynk.virtualWrite(V2, countA);
+  Blynk.virtualWrite(V3, countB);
+
+  // Traffic Light Control
+  if (countA >= countB) {
+    setTrafficLight(true);
+    Serial.println("🚦 Lane A GREEN");
+    Blynk.virtualWrite(V4, "Lane A Green");
+  } else {
+    setTrafficLight(false);
+    Serial.println("🚦 Lane B GREEN");
+    Blynk.virtualWrite(V4, "Lane B Green");
+  }
+
+  // Pothole Detection
+  int vibrationValue = analogRead(VIBRATION_PIN);
+  if (vibrationValue > 500) {
+    Serial.println("⚠️ Pothole Detected!");
+    Blynk.notify("⚠️ Pothole Detected!");
+    Blynk.virtualWrite(V5, "Pothole Alert!");
+  }
+
+  delay(2000);
+}
