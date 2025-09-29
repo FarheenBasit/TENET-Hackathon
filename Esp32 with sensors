@@ -1,0 +1,127 @@
+/*
+  Smart Traffic & Zone Monitoring System
+  Hackathon Project (ESP32 + RFID + Ultrasonic + Vibration Sensors)
+  functions:
+  1. Restricted Zone → Only RFID-tagged vehicles allowed.
+  2. Lane Occupancy → Ultrasonic sensors count vehicles in Lane A & B.
+  3. Traffic Signal Control → Lane with more cars gets green.
+  4. Pothole Detection → SW-420 vibration sensor detects bumps/potholes.
+*/
+/* CODE FOR SENSORS INTEGRATION WITH ESP32 */
+
+#include <SPI.h>
+#include <MFRC522.h>
+
+// RFID
+#define SS_PIN  5    // SDA pin of RC522
+#define RST_PIN 22
+MFRC522 rfid(SS_PIN, RST_PIN);
+
+// Example authorized UID (replace with your tag UID)
+byte authorizedUID[4] = {0xDE, 0xAD, 0xBE, 0xEF};
+
+// Ultrasonic setup
+#define TRIG_A 12
+#define ECHO_A 14
+#define TRIG_B 27
+#define ECHO_B 26
+
+// Traffic light
+#define RED_A   18
+#define GREEN_A 19
+#define RED_B   21
+#define GREEN_B 23
+
+// Vibration sensor
+
+#define VIBRATION_PIN 34  // SW-420 connected to analog input
+
+// Functions
+long getDistance(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW); delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH); delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  long duration = pulseIn(echoPin, HIGH, 30000); // 30ms timeout
+  return duration * 0.034 / 2; // in cm
+}
+
+bool checkRFID() {
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial())
+    return false;
+
+  // Compare 
+  bool match = true;
+  for (byte i = 0; i < 4; i++) {
+    if (rfid.uid.uidByte[i] != authorizedUID[i]) {
+      match = false;
+      break;
+    }
+  }
+
+  rfid.PICC_HaltA(); // Halt card
+  return match;
+}
+
+void setTrafficLight(bool laneA_green) {
+  if (laneA_green) {
+    digitalWrite(GREEN_A, HIGH); digitalWrite(RED_A, LOW);
+    digitalWrite(GREEN_B, LOW);  digitalWrite(RED_B, HIGH);
+  } else {
+    digitalWrite(GREEN_A, LOW);  digitalWrite(RED_A, HIGH);
+    digitalWrite(GREEN_B, HIGH); digitalWrite(RED_B, LOW);
+  }
+}
+
+
+void setup() {
+  Serial.begin(115200);
+
+  SPI.begin();
+  rfid.PCD_Init();
+
+  pinMode(TRIG_A, OUTPUT); pinMode(ECHO_A, INPUT);
+  pinMode(TRIG_B, OUTPUT); pinMode(ECHO_B, INPUT);
+
+  pinMode(RED_A, OUTPUT); pinMode(GREEN_A, OUTPUT);
+  pinMode(RED_B, OUTPUT); pinMode(GREEN_B, OUTPUT);
+
+  pinMode(VIBRATION_PIN, INPUT);
+
+  Serial.println("System Initialized: Smart Traffic & Zone Monitoring");
+}
+
+
+void loop() {
+  // 1. RFID Restricted Zone
+  if (checkRFID()) {
+    Serial.println("✅ Authorized Vehicle Entered Zone");
+  } else {
+    Serial.println("❌ Unauthorized Vehicle Detected!");
+  }
+
+  // 2. Lane Occupancy
+  long distA = getDistance(TRIG_A, ECHO_A);
+  long distB = getDistance(TRIG_B, ECHO_B);
+
+  int countA = (distA < 20) ? 1 : 0; // simple threshold
+  int countB = (distB < 20) ? 1 : 0;
+
+  Serial.printf("Lane A: %d vehicles | Lane B: %d vehicles\n", countA, countB);
+
+  // 3. Traffic Light Control
+  if (countA >= countB) {
+    setTrafficLight(true);
+    Serial.println("🚦 Lane A GREEN, Lane B RED");
+  } else {
+    setTrafficLight(false);
+    Serial.println("🚦 Lane B GREEN, Lane A RED");
+  }
+
+  // 4. Pothole Detection
+  int vibrationValue = analogRead(VIBRATION_PIN);
+  if (vibrationValue > 500) { // Adjust threshold by testing
+    Serial.println("⚠️ Pothole Detected!");
+  }
+
+  delay(2000); 
+}
