@@ -1,23 +1,15 @@
-/*
-  Smart Traffic & Zone Monitoring System
-  Hackathon Project (ESP32 + RFID + Ultrasonic + Vibration Sensors)
-  functions:
-  1. Restricted Zone → Only RFID-tagged vehicles allowed.
-  2. Lane Occupancy → Ultrasonic sensors count vehicles in Lane A & B.
-  3. Traffic Signal Control → Lane with more cars gets green.
-  4. Pothole Detection → SW-420 vibration sensor detects bumps/potholes.
-*/
-/* CODE FOR SENSORS INTEGRATION WITH ESP32 */
+
+// CODE FOR SENSORS INTEGRATION WITH ESP32 
 
 #include <SPI.h>
 #include <MFRC522.h>
 
 // RFID
-#define SS_PIN  5    // SDA pin of RC522
+#define SS_PIN  5    
 #define RST_PIN 22
 MFRC522 rfid(SS_PIN, RST_PIN);
 
-// Example authorized UID (replace with your tag UID)
+// Example authorized UID 
 byte authorizedUID[4] = {0xDE, 0xAD, 0xBE, 0xEF};
 
 // Ultrasonic setup
@@ -34,15 +26,15 @@ byte authorizedUID[4] = {0xDE, 0xAD, 0xBE, 0xEF};
 
 // Vibration sensor
 
-#define VIBRATION_PIN 34  // SW-420 connected to analog input
+#define VIBRATION_PIN 34  
 
 // Functions
 long getDistance(int trigPin, int echoPin) {
   digitalWrite(trigPin, LOW); delayMicroseconds(2);
   digitalWrite(trigPin, HIGH); delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
-  long duration = pulseIn(echoPin, HIGH, 30000); // 30ms timeout
-  return duration * 0.034 / 2; // in cm
+  long duration = pulseIn(echoPin, HIGH, 30000); 
+  return duration * 0.034 / 2; 
 }
 
 bool checkRFID() {
@@ -58,7 +50,7 @@ bool checkRFID() {
     }
   }
 
-  rfid.PICC_HaltA(); // Halt card
+  rfid.PICC_HaltA(); 
   return match;
 }
 
@@ -103,7 +95,7 @@ void loop() {
   long distA = getDistance(TRIG_A, ECHO_A);
   long distB = getDistance(TRIG_B, ECHO_B);
 
-  int countA = (distA < 20) ? 1 : 0; // simple threshold
+  int countA = (distA < 20) ? 1 : 0; // threshold
   int countB = (distB < 20) ? 1 : 0;
 
   Serial.printf("Lane A: %d vehicles | Lane B: %d vehicles\n", countA, countB);
@@ -119,7 +111,7 @@ void loop() {
 
   // 4. Pothole Detection
   int vibrationValue = analogRead(VIBRATION_PIN);
-  if (vibrationValue > 500) { // Adjust threshold by testing
+  if (vibrationValue > 500) { 
     Serial.println("⚠️ Pothole Detected!");
   }
 
